@@ -1,0 +1,404 @@
+import gradio as gr
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
+import re
+
+MODEL_NAME = "ibm-granite/granite-3.3-2b-instruct"
+
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_NAME,
+    torch_dtype=torch.float16,
+    device_map="auto"
+)
+class ColorPaletteGenerator:
+
+    palettes = {
+        "modern": {
+            "primary": "#6366f1",
+            "secondary": "#8b5cf6",
+            "accent": "#ec4899",
+            "background": "#0f172a",
+            "surface": "#1e293b",
+            "text_primary": "#f8fafc",
+            "text_secondary": "#94a3b8",
+            "border": "#334155"
+        },
+        "vibrant": {
+            "primary": "#ff4d6d",
+            "secondary": "#ff758f",
+            "accent": "#ffb3c1",
+            "background": "#1a1a2e",
+            "surface": "#16213e",
+            "text_primary": "#ffffff",
+            "text_secondary": "#cbd5e1",
+            "border": "#2e2e4d"
+        },
+        "ocean": {
+            "primary": "#0284c7",
+            "secondary": "#06b6d4",
+            "accent": "#67e8f9",
+            "background": "#0c4a6e",
+            "surface": "#075985",
+            "text_primary": "#f0f9ff",
+            "text_secondary": "#bae6fd",
+            "border": "#0369a1"
+        },
+        "forest": {
+            "primary": "#16a34a",
+            "secondary": "#22c55e",
+            "accent": "#4ade80",
+            "background": "#052e16",
+            "surface": "#14532d",
+            "text_primary": "#dcfce7",
+            "text_secondary": "#bbf7d0",
+            "border": "#166534"
+        },
+        "sunset": {
+            "primary": "#f97316",
+            "secondary": "#fb923c",
+            "accent": "#facc15",
+            "background": "#431407",
+            "surface": "#7c2d12",
+            "text_primary": "#fff7ed",
+            "text_secondary": "#fed7aa",
+            "border": "#9a3412"
+        },
+        "luxury": {
+            "primary": "#d4af37",
+            "secondary": "#b8860b",
+            "accent": "#ffd700",
+            "background": "#111111",
+            "surface": "#1c1c1c",
+            "text_primary": "#f5f5f5",
+            "text_secondary": "#cccccc",
+            "border": "#333333"
+        },
+        "creative": {
+            "primary": "#9333ea",
+            "secondary": "#ec4899",
+            "accent": "#22d3ee",
+            "background": "#0f0f1a",
+            "surface": "#1f1f2e",
+            "text_primary": "#ffffff",
+            "text_secondary": "#d1d5db",
+            "border": "#2d2d44"
+        },
+        "minimal": {
+            "primary": "#ffffff",
+            "secondary": "#e5e7eb",
+            "accent": "#9ca3af",
+            "background": "#111827",
+            "surface": "#1f2937",
+            "text_primary": "#f9fafb",
+            "text_secondary": "#d1d5db",
+            "border": "#374151"
+        }
+    }
+
+    @classmethod
+    def get_palette(cls, style):
+        return cls.palettes.get(style, cls.palettes["modern"])
+def detect_sections(description):
+    description = description.lower()
+    sections = []
+
+    mapping = {
+        "hero": ["hero", "welcome", "banner", "landing"],
+        "features": ["feature", "features", "services"],
+        "about": ["about", "company", "bio"],
+        "portfolio": ["portfolio", "gallery", "projects"],
+        "testimonials": ["testimonial", "reviews", "clients"],
+        "pricing": ["pricing", "plans"],
+        "contact": ["contact", "form", "email"],
+        "footer": ["footer"]
+    }
+
+    for section, keywords in mapping.items():
+        for word in keywords:
+            if word in description:
+                sections.append(section)
+                break
+
+    # If nothing matched → return default layout
+    if not sections:
+        sections = [
+            "hero",
+            "features",
+            "about",
+            "portfolio",
+            "contact",
+            "footer"
+        ]
+
+    return sections
+import html
+from datetime import datetime
+
+
+class HTMLPageBuilder:
+
+    def __init__(self, title, description, style, author="Your Name", base_url="https://example.com"):
+        self.title = html.escape(title)
+        self.description = html.escape(description)
+        self.author = html.escape(author)
+        self.base_url = base_url.rstrip("/")
+        self.palette = ColorPaletteGenerator.get_palette(style)
+        self.sections = detect_sections(description)
+
+    # ---------------------------
+    # MAIN BUILD
+    # ---------------------------
+
+    def build(self):
+        html_sections = ""
+
+        for section in self.sections:
+            method = getattr(self, f"build_{section}", None)
+            if method:
+                html_sections += method()
+
+        return self.wrap_html(html_sections)
+
+    # ---------------------------
+    # SMART HERO GENERATOR
+    # ---------------------------
+
+    def generate_hero_content(self):
+        words = self.description.split()
+
+        # Generate headline (first 6–8 words)
+        headline = " ".join(words[:8]).strip()
+        if len(words) > 8:
+            headline += "..."
+
+        # Generate subheadline (full description)
+        subheadline = self.description
+
+        return headline, subheadline
+
+    # ---------------------------
+    # WRAP FULL HTML (PRODUCTION READY)
+    # ---------------------------
+
+    def wrap_html(self, content):
+
+        headline, subheadline = self.generate_hero_content()
+        current_year = datetime.now().year
+
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>{self.title}</title>
+<meta name="description" content="{self.description}">
+<meta name="author" content="{self.author}">
+<meta name="robots" content="index, follow">
+
+<!-- Open Graph (Facebook, LinkedIn) -->
+<meta property="og:title" content="{self.title}">
+<meta property="og:description" content="{self.description}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{self.base_url}">
+<meta property="og:image" content="{self.base_url}/preview.jpg">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{self.title}">
+<meta name="twitter:description" content="{self.description}">
+<meta name="twitter:image" content="{self.base_url}/preview.jpg">
+
+<link rel="canonical" href="{self.base_url}">
+
+<style>
+{generate_css(self.palette)}
+</style>
+</head>
+
+<body>
+
+<section class="hero">
+    <h1>{self.title}</h1>
+    <p>{subheadline}</p>
+    <button onclick="document.getElementById('portfolio').scrollIntoView({{behavior:'smooth'}})">
+        View My Work
+    </button>
+</section>
+
+{content}
+
+<footer>
+    <p>© {current_year} {self.author}. All rights reserved.</p>
+</footer>
+
+<!-- Gradio Live Title Fix -->
+<script>
+document.title = "{self.title}";
+</script>
+
+</body>
+</html>
+"""
+
+    # ---------------------------
+    # SECTIONS
+    # ---------------------------
+
+    def build_features(self):
+        return """
+<section class="features">
+    <div class="card">⚡ Fast Performance</div>
+    <div class="card">📱 Responsive Design</div>
+    <div class="card">🎨 Modern UI</div>
+</section>
+"""
+
+    def build_about(self):
+        return f"""
+<section class="about">
+    <h2>About</h2>
+    <p>{self.description}</p>
+</section>
+"""
+
+    def build_portfolio(self):
+        return """
+<section class="portfolio" id="portfolio">
+    <h2>Projects</h2>
+    <div class="grid">
+        <div class="card">Project 1</div>
+        <div class="card">Project 2</div>
+        <div class="card">Project 3</div>
+    </div>
+</section>
+"""
+
+    def build_testimonials(self):
+        return """
+<section class="testimonials">
+    <h2>Testimonials</h2>
+    <div class="card">"Amazing work!" – Happy Client</div>
+</section>
+"""
+
+    def build_contact(self):
+        return """
+<section class="contact">
+    <h2>Contact</h2>
+    <form>
+        <input type="text" placeholder="Name" required>
+        <input type="email" placeholder="Email" required>
+        <textarea placeholder="Message" required></textarea>
+        <button type="submit">Send Message</button>
+    </form>
+</section>
+"""
+def generate_css(p):
+    return f"""
+:root {{
+  --primary: {p['primary']};
+  --secondary: {p['secondary']};
+  --accent: {p['accent']};
+  --bg: {p['background']};
+  --surface: {p['surface']};
+  --text: {p['text_primary']};
+}}
+
+body {{
+  margin:0;
+  font-family:Arial, sans-serif;
+  background:var(--bg);
+  color:var(--text);
+}}
+
+section {{
+  padding:80px 20px;
+  text-align:center;
+}}
+
+.hero {{
+  background:linear-gradient(135deg,var(--primary),var(--secondary));
+}}
+
+button {{
+  padding:12px 24px;
+  background:var(--accent);
+  border:none;
+  color:white;
+  border-radius:8px;
+  cursor:pointer;
+  transition:0.3s;
+}}
+
+button:hover {{
+  transform:scale(1.05);
+}}
+
+.card {{
+  background:var(--surface);
+  padding:20px;
+  margin:10px;
+  border-radius:12px;
+  display:inline-block;
+}}
+
+.grid {{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:20px;
+}}
+
+footer {{
+  padding:20px;
+  background:var(--surface);
+}}
+"""
+def generate_page(title, description, style):
+    builder = HTMLPageBuilder(title, description, style)
+    return builder.build()
+
+
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
+
+    gr.Markdown("# HTML Quick-Styler")
+
+    with gr.Tab("Generate Page"):
+        title = gr.Textbox(label="Page Title")
+        description = gr.Textbox(label="Description")
+        style = gr.Dropdown(
+            choices=list(ColorPaletteGenerator.palettes.keys()),
+            value="modern",
+            label="Color Style"
+        )
+
+        generate_btn = gr.Button("Generate Page")
+
+        code_output = gr.Code(label="Generated HTML", language="html")
+
+    with gr.Tab("Live Preview"):
+        preview_output = gr.HTML(label="Live Website Preview")
+
+    with gr.Tab("Color Palettes"):
+        gr.JSON(ColorPaletteGenerator.palettes)
+
+    with gr.Tab("Templates"):
+        gr.Markdown("Hero, Features, Portfolio, Contact Templates Included")
+
+    with gr.Tab("Guide"):
+        gr.Markdown("Enter title → description → choose style → click Generate.")
+
+    #   THIS IS THE IMPORTANT PART
+    generate_btn.click(
+        fn=generate_page,
+        inputs=[title, description, style],
+        outputs=[code_output]
+    ).then(
+        fn=generate_page,
+        inputs=[title, description, style],
+        outputs=[preview_output]
+    )
+
+
+demo.launch(share=True)
